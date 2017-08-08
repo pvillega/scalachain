@@ -9,23 +9,24 @@ lazy val scalaChain =
     .settings(settings)
     .settings(
       libraryDependencies ++= Seq(
-        library.scalaCheck % Test,
-        library.scalaTest  % Test
+        library.cats,
+        library.log4s,
+        library.logback,
+        library.scrypto
       )
     )
 
 // *****************************************************************************
 // Library dependencies
 // *****************************************************************************
+resolvers += "Sonatype Releases" at "https://oss.sonatype.org/content/repositories/releases/"
 
 lazy val library =
   new {
-    object Version {
-      val scalaCheck = "1.13.5"
-      val scalaTest  = "3.0.3"
-    }
-    val scalaCheck = "org.scalacheck" %% "scalacheck" % Version.scalaCheck
-    val scalaTest  = "org.scalatest"  %% "scalatest"  % Version.scalaTest
+    val cats: ModuleID = "org.typelevel" %% "cats" % "0.9.0"
+    val log4s = "org.log4s" %% "log4s" % "1.3.5"
+    val logback = "ch.qos.logback" % "logback-classic" % "1.2.3"
+    val scrypto: ModuleID = "org.scorexfoundation" %% "scrypto" % "1.2.1"
   }
 
 // *****************************************************************************

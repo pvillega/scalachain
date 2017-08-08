@@ -2,6 +2,9 @@
 
 Welcome to scalaChain!
 
+This is a sample project to understand the basics of Blockchain. It ignores the complex parts 
+like Proof-ofWork and distributed networks. See the companion blog post for more reference. 
+
 ## Contribution policy ##
 
 Contributions via GitHub pull requests are gladly accepted from their original author. Along with
