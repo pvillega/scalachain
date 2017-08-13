@@ -85,3 +85,9 @@ A transaction is a message that is sent from one account to another accoun -> tr
 
 !!! NOTE: once written, add 'multiple netowrk nodes' and conflict resolution/proof of stake between them. Implement it!
 - it can be a good talk for scalax bytes, then refine for the main talk.
+
+
+blockchain in FP?
+scorex?
+ethereum scala?
+where do we start?

@@ -40,7 +40,7 @@ object ScalaCoin extends ScalaChain[ListBuffer[Output]] {
   private val originOutputUUID      = UUID.randomUUID()
   private val originOutput          = Output(originOutputUUID, 0, 100)
   private val originTransaction     = Transaction(originTransactionUUID, originOutput :: Nil)
-  val initialBlock: Array[Block]    = Array(Block(0L, "0", 0L, originTransaction))
+  val initialBlock: Array[Block]    = Array(Block(0L, "0", 0L, "", originTransaction))
   val initialChain: BlockChain      = State(_ => (initialBlock, ListBuffer(originOutput)))
 
   // Note: to keep it simple we don't do validation, an expensive mistake ;) This code is most likely not correct, just an example!
@@ -74,7 +74,6 @@ object ScalaCoin extends ScalaChain[ListBuffer[Output]] {
   // the balance is stored in the A of the State in the blockchain, which contains unspent outputs
   def getBalance(chain: BlockChain, userId: Long): BigDecimal =
     chain.runA(initialBlock).value.filter(_.owner === userId).map(_.amount).sum
-
 
   val logger = org.log4s.getLogger
 

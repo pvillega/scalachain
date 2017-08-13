@@ -12,7 +12,8 @@ lazy val scalaChain =
         library.cats,
         library.log4s,
         library.logback,
-        library.scrypto
+        library.scrypto,
+        library.scalaTest % "test"
       )
     )
 
@@ -27,6 +28,8 @@ lazy val library =
     val log4s = "org.log4s" %% "log4s" % "1.3.5"
     val logback = "ch.qos.logback" % "logback-classic" % "1.2.3"
     val scrypto: ModuleID = "org.scorexfoundation" %% "scrypto" % "1.2.1"
+
+    val scalaTest = "org.scalatest" %% "scalatest" % "3.0.1"
   }
 
 // *****************************************************************************
@@ -54,7 +57,7 @@ lazy val commonSettings =
     ),
     unmanagedSourceDirectories.in(Compile) := Seq(scalaSource.in(Compile).value),
     unmanagedSourceDirectories.in(Test) := Seq(scalaSource.in(Test).value),
-    wartremoverWarnings in (Compile, compile) ++= Warts.unsafe
+    wartremoverWarnings in (Compile, compile) ++= Warts.unsafe.filterNot(_ == Wart.Any)
 )
 
 lazy val gitSettings =
