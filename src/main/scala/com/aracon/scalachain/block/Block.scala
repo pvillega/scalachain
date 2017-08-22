@@ -14,20 +14,13 @@
  * limitations under the License.
  */
 
-package com.aracon.scalachain
+package com.aracon.scalachain.block
 
-import java.io.{ ByteArrayOutputStream, ObjectOutputStream }
-
-import com.aracon.scalachain.FastCryptographicHash.Message
-
-// trait that all data stored in blocks within ScalaChain must extend
-trait BlockData {
-  def serialise: Message = {
-    val stream: ByteArrayOutputStream = new ByteArrayOutputStream()
-    val oos                           = new ObjectOutputStream(stream)
-    oos.writeObject(this)
-    oos.close()
-    stream.toByteArray
-  }
+// A blockchain, as per the name, is a set of blocks that store data and keep some ordering. This case class represents one of such blocks.
+final case class Block(index: Long,
+                       previousHash: String,
+                       timestamp: Long,
+                       hash: String,
+                       blockData: BlockData) {
+  override def toString: String = s"Block[$index][hash=$hash][prevHash=$previousHash]"
 }
-case object EmptyBlockData extends BlockData

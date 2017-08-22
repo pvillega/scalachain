@@ -18,15 +18,17 @@ package com.aracon.scalachain.network
 
 import java.util.UUID
 
-import cats.data.Validated
-import cats.data.Validated.{ Invalid, Valid }
-import com.aracon.scalachain.{ Block, FastCryptographicHash }
-import com.aracon.scalachain.error._
+import cats._
+import cats.data._
+import cats.implicits._
+import com.aracon.scalachain.crypto.FastCryptographicHash
+import com.aracon.scalachain.block.{ Block, BlockData }
+import com.aracon.scalachain.error.{ InvalidLocalChainError, _ }
 
 import scala.collection.mutable
 
 // Represents a node in the network that manages the blockchain.
-// Side-effect-tastic
+// Side-effect-tastic code :)
 class Node(val nodeId: UUID) {
 
   val name: String = nodeId.toString.takeWhile(_ != '-')
@@ -36,52 +38,54 @@ class Node(val nodeId: UUID) {
   // logger to help us keep an eye on node status changes
   private[this] val logger = org.log4s.getLogger
 
-  def info(msg: String): Unit  = logger.info(s"[$name] $msg")
+  def info(msg: String): Unit = logger.info(s"[$name] $msg")
+
   def error(msg: String): Unit = logger.error(s"[$name] $msg")
 
   private[network] val blockchain: mutable.Buffer[Block] = mutable.Buffer.empty[Block]
 
-  private val peers: mutable.Buffer[UUID] = mutable.Buffer.empty[UUID]
+  private val peers: mutable.Buffer[Node] = mutable.Buffer.empty[Node]
 
   private[network] def appendBlock(block: Block): Unit =
-    asUnit {
-      getLatestBlock match {
-        case Some(lastestBlock) if validateReceivedBlock(lastestBlock, block).isInvalid =>
-          info(
-            s"Ignore invalid block $block. Triggering a network request for blockchain in case we are out of sync"
-          )
-          synchronizeWithNetwork()
-        case _ =>
-          info(s"Add block $block")
-          blockchain += block
-      }
+    getLatestBlock match {
+      case Some(latestBlock) if validateReceivedBlock(latestBlock, block).isValid =>
+        info(s"Add block $block")
+        blockchain += block
+
+      case _ =>
+        info(
+          s"Ignore invalid block $block. Triggering a network request for blockchain in case we are out of sync"
+        )
+        synchronizeWithNetwork()
     }
 
   def getLocalBlockchainCopy: List[Block] = blockchain.toList
 
-  private[network] def appendPeer(peerId: UUID): Unit =
-    asUnit {
-      if (!peers.contains(peerId)) {
-        info(s"Add peer $peerId")
-        peers += peerId
-      }
+  private[network] def appendPeer(peer: Node): Unit =
+    if (!peers.contains(peer)) {
+      info(s"Add peer $peer")
+      peers += peer
     }
 
-  def getKnownPeers: List[UUID] = peers.toList
+  def getKnownPeers: List[Node] = peers.toList
 
   def getLatestBlock: Option[Block] = blockchain.lastOption
 
-  def connectToNetwork(peers: List[UUID]): Either[NetworkError, Unit] = {
+  def connectToNetwork(peers: List[UUID], network: Network): Either[NetworkError, Unit] = {
     info(s"Connect to network using peers $peers")
     peers match {
       case Nil =>
         error("Couldn't connect to network as no peers for bootstrapping provided")
         Left(NoBootstrapPeers)
       case knownPeers =>
-        info("Store known peers")
-        knownPeers.foreach(appendPeer)
         info("Register in network map")
-        asUnit { Network.network += (nodeId -> this) }
+        network.addNode(this)
+        info("Store known peers")
+        knownPeers.foreach { nodeId =>
+          network.getNode(nodeId).fold(()) { node =>
+            appendPeer(node)
+          }
+        }
         info("Sync with network")
         synchronizeWithNetwork()
         info("Done connecting")
@@ -89,84 +93,136 @@ class Node(val nodeId: UUID) {
     }
   }
 
-  // TODO: def mineBlock ??
+  def addBlockToNetwork(blockData: BlockData): Unit = {
+    info(s"Add new block to network - with data $blockData")
+    val newBlock = createNextBlock(blockData)
+    appendBlock(newBlock)
+    info(s"Add new block to network - block added to local chain, broadcasting to network")
+    runOnNetwork(_.appendBlock(newBlock))
+    info(s"Add new block to network - broadcast completed")
+  }
 
-  //TODO: method to validate chain and request new if invalid??
+  private[network] def createNextBlock(blockData: BlockData): Block = {
+    info(s"Create new block - with data $blockData")
+    getLatestBlock match {
+      case None =>
+        // this *should* never happen as when we join the network we will get the latest blockchain, which should contain at least the origin node
+        error(
+          "Create new block - we couldn't load latest local block, syncing with network and retrying"
+        )
+        synchronizeWithNetwork()
+        createNextBlock(blockData)
+      case Some(last) =>
+        val timestamp = System.currentTimeMillis()
+        val hash =
+          FastCryptographicHash.calculateBlockHash(last.index + 1, last.hash, timestamp, blockData)
+        Block(last.index + 1, last.hash, timestamp, hash, blockData)
+    }
+  }
 
   private[network] def synchronizeWithNetwork(): Unit = {
-    info("Sync with network - request latest block from known peers")
+    info(s"Sync with network - request latest block from ${peers.size} known peers")
     queryLatestBlockFromPeers match {
       case Nil =>
-        info("Sync with network - received no blocks from peers. Do nothing")
+        info(
+          "Sync with network - received no blocks from peers. Do nothing as we may be disconnected from network"
+        )
       case list =>
         val largestKnownBlockInNetwork = list.maxBy(_.index)
+        val missingLargestNetworkBlock = largestKnownBlockInNetwork.index > getLatestIndexOf(
+          getLocalBlockchainCopy
+        )
+        val invalidLocalChain = validateLocalBlockchain.isInvalid
 
-        if (largestKnownBlockInNetwork.index > getLatestIndexOf(getLocalBlockchainCopy)) {
+        if (invalidLocalChain || missingLargestNetworkBlock) {
           info("Sync with network - we are out of sync, request network for the latest chain")
-          updateBlockchainFromNetwork()
+          replaceLocalBlockchainWithNetworkCopy()
         }
     }
   }
 
+  private[network] def validateLocalBlockchain: ValidatedNel[InvalidLocalChainError.type, Unit] =
+    getLocalBlockchainCopy match {
+      case Nil =>
+        error(
+          "Validate local chain - local chain is Empty, return failure as we should always have at least the origin node!"
+        )
+        InvalidLocalChainError.invalidNel[Unit]
+      case _ :: Nil =>
+        info(
+          "Validate local chain - local chain has a single node, we assume it is the origin node and mark it as valid. Otherwise we could get infinite loops in a new chain."
+        )
+        ().validNel[InvalidLocalChainError.type]
+      case localCopy =>
+        info("Validate local chain - local chain has multiple nodes, validating each one.")
+        localCopy
+          .zip(localCopy.drop(1))
+          .map { case (prev, next) => validateReceivedBlock(prev, next) }
+          .foldLeft(().validNel[BlockError])((a, b) => a.combine(b))
+          .leftMap(_ => NonEmptyList.of(InvalidLocalChainError))
+    }
+
   private[network] def queryLatestBlockFromPeers: List[Block] =
     runOnNetwork(_.getLatestBlock).flatten
 
-  private[network] def updateBlockchainFromNetwork(): Unit = {
-    info("Request Blockchain from network - request the most up to date chain from peers")
+  private[network] def replaceLocalBlockchainWithNetworkCopy(): Unit = {
+    info("Replace Blockchain with network copy - request the most up to date chain from peers")
     val allKnownChains = runOnNetwork(_.getLocalBlockchainCopy)
-    info("Request Blockchain from network - select longest chain (higher index)")
-    val longestChain = allKnownChains.maxBy(getLatestIndexOf)
-    info(
-      s"Request Blockchain from network - received longest chain with index ${getLatestIndexOf(longestChain)}. Local chain has index ${getLatestIndexOf(getLocalBlockchainCopy)}"
-    )
-
-    if (getLatestIndexOf(longestChain) > getLatestIndexOf(getLocalBlockchainCopy)) {
-      info(
-        "Request Blockchain from network - chain received is longer than local chain, replace local with copy"
-      )
-      blockchain.clear()
-      asUnit { blockchain ++= longestChain.toBuffer }
+    info("Replace Blockchain with network copy - select longest chain (higher index)")
+    allKnownChains.maxBy(getLatestIndexOf) match {
+      case Nil =>
+        info(
+          "Replace Blockchain with network copy - we received empty chains from peers, ignoring replacement step."
+        )
+      case longestChain =>
+        info(
+          s"Replace Blockchain with network copy - received longest chain with index ${getLatestIndexOf(longestChain)}. Local chain has index ${getLatestIndexOf(getLocalBlockchainCopy)}"
+        )
+        blockchain.clear()
+        blockchain ++= longestChain.toBuffer
     }
   }
 
-  private[network] def validateReceivedBlock(latestLocalBlock: Block,
-                                             receivedBlock: Block): Validated[BlockError, Unit] = {
+  private[network] def validateReceivedBlock(
+      latestLocalBlock: Block,
+      receivedBlock: Block
+  ): ValidatedNel[BlockError, Unit] = {
     info(s"Validate received block - validating $receivedBlock")
-    val calculatedHash = FastCryptographicHash.calculateHash(receivedBlock.index,
-                                                             receivedBlock.previousHash,
-                                                             receivedBlock.timestamp,
-                                                             receivedBlock.blockData)
+    val calculatedHash = FastCryptographicHash.calculateBlockHash(receivedBlock.index,
+                                                                  receivedBlock.previousHash,
+                                                                  receivedBlock.timestamp,
+                                                                  receivedBlock.blockData)
+    val v = ().validNel[BlockError]
 
-    if (latestLocalBlock.index + 1 != receivedBlock.index) {
+    val indexValidation = v.ensure {
       error(
         s"Validate received block - Received block has invalid index. Expected ${latestLocalBlock.index + 1}"
       )
-      Invalid(WrongIndex)
-    } else if (latestLocalBlock.hash != receivedBlock.previousHash) {
+      NonEmptyList.of(WrongIndex)
+    }(_ => latestLocalBlock.index + 1 === receivedBlock.index)
+
+    val previousHashValidation = v.ensure {
       error(
         s"Validate received block - Received block has invalid previous hash. Expected ${latestLocalBlock.hash}"
       )
-      Invalid(WrongPreviousHash)
-    } else if (calculatedHash != receivedBlock.hash) {
+      NonEmptyList.of(WrongPreviousHash)
+    }(_ => latestLocalBlock.hash === receivedBlock.previousHash)
+
+    val hashValidation = v.ensure {
       error(s"Validate received block - Received block has invalid hash. Expected $calculatedHash")
-      Invalid(WrongBlockHash)
-    } else {
-      info("Validate received block -  Block is valid")
-      Valid(())
+      NonEmptyList.of(WrongBlockHash)
+    }(_ => calculatedHash === receivedBlock.hash)
+
+    (indexValidation |@| previousHashValidation |@| hashValidation).map { (_, _, _) =>
+      ()
     }
+
   }
 
   private def getLatestIndexOf(chain: List[Block]): Long =
     chain.lastOption.fold(-1L)(_.index)
 
   private def runOnNetwork[A](f: Node => A): List[A] =
-    for {
-      nodeId <- getKnownPeers
-      node   <- Network.network.get(nodeId)
-    } yield f(node)
+    getKnownPeers.map(f)
 
-  // Added so we know we are purposefully ignoring the results of some expressions, as per compiler and wart-remover warnings
-  private def asUnit[A](f: => A): Unit = {
-    val ignoreResult = f
-  }
 }

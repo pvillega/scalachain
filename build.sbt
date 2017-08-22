@@ -41,6 +41,8 @@ lazy val settings =
   gitSettings ++
   scalafmtSettings
 
+val wartsIgnored = List(Wart.Any, Wart.NonUnitStatements, Wart.DefaultArguments)
+
 lazy val commonSettings =
   Seq(
     scalaVersion := "2.12.2",
@@ -57,7 +59,7 @@ lazy val commonSettings =
     ),
     unmanagedSourceDirectories.in(Compile) := Seq(scalaSource.in(Compile).value),
     unmanagedSourceDirectories.in(Test) := Seq(scalaSource.in(Test).value),
-    wartremoverWarnings in (Compile, compile) ++= Warts.unsafe.filterNot(_ == Wart.Any)
+    wartremoverWarnings in (Compile, compile) ++= Warts.unsafe.filterNot(wartsIgnored.contains)
 )
 
 lazy val gitSettings =

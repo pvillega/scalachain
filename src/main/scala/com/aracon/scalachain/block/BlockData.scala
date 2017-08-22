@@ -14,18 +14,20 @@
  * limitations under the License.
  */
 
-package com.aracon.scalachain.error
+package com.aracon.scalachain.block
 
-sealed trait BlockchainError
+import java.io.{ ByteArrayOutputStream, ObjectOutputStream }
 
-sealed trait NetworkError extends BlockchainError
+import com.aracon.scalachain.crypto.FastCryptographicHash.Message
 
-case object NoBootstrapPeers extends NetworkError
-
-case object InvalidLocalChainError extends BlockchainError
-
-sealed trait BlockError extends BlockchainError
-
-case object WrongIndex        extends BlockError
-case object WrongPreviousHash extends BlockError
-case object WrongBlockHash    extends BlockError
+// trait that all data stored in blocks within ScalaChain must extend
+trait BlockData {
+  def serialise: Message = {
+    val stream: ByteArrayOutputStream = new ByteArrayOutputStream()
+    val oos                           = new ObjectOutputStream(stream)
+    oos.writeObject(this)
+    oos.close()
+    stream.toByteArray
+  }
+}
+case object EmptyBlockData extends BlockData

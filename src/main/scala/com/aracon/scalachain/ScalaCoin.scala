@@ -18,8 +18,7 @@ package com.aracon.scalachain
 
 import java.util.UUID
 
-import cats.data.State
-import cats.implicits._
+import com.aracon.scalachain.block.BlockData
 
 import scala.collection.mutable.ListBuffer
 
@@ -34,7 +33,7 @@ final case class Transaction(inputId: UUID, outputs: List[Output]) extends Block
 // Implement a rudimentary coin on top of ScalaChain. We store as value in the state a list of unspent outputs,
 // global to the blockchain, which are equivalent to the balance of all the users.
 object ScalaCoin extends ScalaChain[ListBuffer[Output]] {
-
+  /*
   // Initial state of the world, all the coins in existence. We won't mint new ones in this model!
   private val originTransactionUUID = UUID.randomUUID()
   private val originOutputUUID      = UUID.randomUUID()
@@ -105,5 +104,5 @@ object ScalaCoin extends ScalaChain[ListBuffer[Output]] {
       .mkString("\n")
     println(s">> All blocks:\n$chain")
   }
-
+ */
 }
