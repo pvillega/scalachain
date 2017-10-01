@@ -22,8 +22,10 @@ import cats._
 import cats.data._
 import cats.implicits._
 import com.aracon.scalachain.crypto.FastCryptographicHash
-import com.aracon.scalachain.block.{ Block, BlockData }
+import com.aracon.scalachain.block.{ Block, BlockData, SmartContract }
+import com.aracon.scalachain.contracts.{ ScalaCoinContract, ScalaCoinTransfer }
 import com.aracon.scalachain.error.{ InvalidLocalChainError, _ }
+import com.aracon.scalachain.messages.{ CreateContract, Message, TransferMoney }
 
 import scala.collection.mutable
 
@@ -38,11 +40,11 @@ class Node(val nodeId: UUID) {
   // logger to help us keep an eye on node status changes
   private[this] val logger = org.log4s.getLogger
 
-  def info(msg: String): Unit = logger.info(s"[$name] $msg")
+  def info(msg: String): Unit = logger.info(s"[$toString] $msg")
 
-  def error(msg: String): Unit = logger.error(s"[$name] $msg")
+  def error(msg: String): Unit = logger.error(s"[$toString] $msg")
 
-  private[network] val blockchain: mutable.Buffer[Block] = mutable.Buffer.empty[Block]
+  private[scalachain] val blockchain: mutable.Buffer[Block] = mutable.Buffer.empty[Block]
 
   private val peers: mutable.Buffer[Node] = mutable.Buffer.empty[Node]
 
@@ -61,7 +63,7 @@ class Node(val nodeId: UUID) {
 
   def getLocalBlockchainCopy: List[Block] = blockchain.toList
 
-  private[network] def appendPeer(peer: Node): Unit =
+  private[scalachain] def appendPeer(peer: Node): Unit =
     if (!peers.contains(peer)) {
       info(s"Add peer $peer")
       peers += peer
@@ -92,6 +94,42 @@ class Node(val nodeId: UUID) {
         Right(())
     }
   }
+
+  def processMessage(message: Message): Either[MessageError, Unit] = message match {
+    case CreateContract(smartContract) =>
+      findContractById(smartContract.contractUniqueId).fold[Either[MessageError, Unit]](
+        Right(addBlockToNetwork(smartContract))
+      )(_ => Left(ContractReferenceAlreadyExists))
+    case TransferMoney(contractId, from, to, amount) =>
+      findContractById(contractId)
+        .fold[Either[MessageError, Unit]](Left(InvalidContractReference)) { contract =>
+          val scalaCoinContract = contract.asInstanceOf[ScalaCoinContract]
+          scalaCoinContract
+            .transfer(from, to, amount)
+            .fold(
+              err => Left(ContractRejectedMessage(err)),
+              _ => {
+                val transferAction = ScalaCoinTransfer(contractId, from, to, amount)
+                Right(addBlockToNetwork(transferAction))
+              }
+            )
+        }
+    case _ => Left(UnknownMessage)
+  }
+
+  private[network] def findContractById(contractId: UUID): Option[SmartContract] =
+    getLocalBlockchainCopy
+      .find(
+        b =>
+          b.blockData.isInstanceOf[SmartContract] && b.blockData
+            .asInstanceOf[SmartContract]
+            .contractUniqueId === contractId
+      )
+      .map { b =>
+        val contract = b.blockData.asInstanceOf[SmartContract]
+        contract.restoreContractLatestState(getLocalBlockchainCopy)
+        contract
+      }
 
   def addBlockToNetwork(blockData: BlockData): Unit = {
     info(s"Add new block to network - with data $blockData")

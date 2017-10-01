@@ -18,6 +18,7 @@ package com.aracon.scalachain.network
 
 import java.util.UUID
 
+import com.aracon.scalachain.SpecNetworkPackageHelper
 import com.aracon.scalachain.block.EmptyBlockData
 import org.scalacheck.Gen
 
@@ -42,6 +43,42 @@ class NetworkSpec extends SpecNetworkPackageHelper {
         network.addNode(node)
 
         network.getAllNodes should be(Set(network.originNode, node))
+      }
+    }
+  }
+
+  "removeNode" - {
+    "removes the node from the network" in {
+      forAll(nodeGen) { (node) =>
+        val network = new Network()
+
+        network.addNode(node)
+
+        network.getNode(node.nodeId) should contain(node)
+
+        network.removeNode(node)
+
+        network.getNode(node.nodeId) should be(None)
+      }
+    }
+    "if trying to remove a non-existing node" - {
+      "operation does nothing raising no error" in {
+        forAll(nodeGen) { (node) =>
+          val network = new Network()
+
+          network.removeNode(node)
+
+          network.getNode(node.nodeId) should be(None)
+        }
+      }
+      "operation doesn't alter existing node list" in {
+        forAll(nodeGen) { (node) =>
+          val network = new Network()
+
+          network.removeNode(node)
+
+          network.getAllNodes should be(Set(network.originNode))
+        }
       }
     }
   }

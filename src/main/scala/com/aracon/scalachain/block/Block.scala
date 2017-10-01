@@ -17,6 +17,8 @@
 package com.aracon.scalachain.block
 
 // A blockchain, as per the name, is a set of blocks that store data and keep some ordering. This case class represents one of such blocks.
+// In a real blockchain the blocks may contain many pieces of data and use https://en.wikipedia.org/wiki/Merkle_tree to avoid tampering.
+// Here we keep it simple.
 final case class Block(index: Long,
                        previousHash: String,
                        timestamp: Long,

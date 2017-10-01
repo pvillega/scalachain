@@ -14,8 +14,17 @@
  * limitations under the License.
  */
 
-package com.aracon.scalachain
+package com.aracon.scalachain.messages
 
-//TODO: how does the concept of wallet maps into this hierarchy we created
-//TODO: once the node network works create 3 samples: network with only 'bitcoin', network with only 'smart contract' (gas?), mix of both using contract to implement 'bitcoin'
-trait ScalaChain[A] {}
+import java.util.UUID
+
+import com.aracon.scalachain.block.SmartContract
+
+sealed trait Message
+
+case class CreateContract(smartContract: SmartContract) extends Message
+
+trait ScalaCoinMessage extends Message
+
+case class TransferMoney(contractId: UUID, from: UUID, to: UUID, amount: Long)
+    extends ScalaCoinMessage

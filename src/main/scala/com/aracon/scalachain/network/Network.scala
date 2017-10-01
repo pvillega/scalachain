@@ -17,8 +17,12 @@
 package com.aracon.scalachain.network
 
 import java.util.UUID
+
 import scala.collection.mutable
 import java.util.concurrent._
+
+import com.aracon.scalachain.block.{ Block, EmptyBlockData }
+import com.aracon.scalachain.crypto.FastCryptographicHash
 
 // Contains objects that represent the bootstrap node of the node network as well as all nodes in the network
 class Network() {
@@ -28,7 +32,15 @@ class Network() {
   override def toString: String = s"Network-${getAllNodes.map(_.toString).mkString("|")}"
 
   val originNodeId: UUID = UUID.fromString("fa87c0d0-afac-11de-8a39-0800200c9a66")
-  val originNode: Node   = new Node(originNodeId)
+  val originNode: Node = {
+    val node = new Node(originNodeId)
+
+    val hashOriginBlock = FastCryptographicHash.calculateBlockHash(1L, "", 0L, EmptyBlockData)
+    val originBlock     = Block(1L, "", 0L, hashOriginBlock, EmptyBlockData)
+    node.blockchain += originBlock
+
+    node
+  }
 
   private val network: mutable.HashMap[UUID, Node] =
     mutable.HashMap(originNode.nodeId -> originNode)
@@ -43,6 +55,9 @@ class Network() {
       case None => network += (node.nodeId -> node)
       case _    => ()
     }
+
+  def removeNode(node: Node): Unit =
+    network.remove(node.nodeId)
 
   def getNode(nodeId: UUID): Option[Node] = network.get(nodeId)
 

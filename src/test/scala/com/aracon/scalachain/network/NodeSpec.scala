@@ -20,9 +20,12 @@ import java.util.UUID
 
 import cats.data.NonEmptyList
 import cats.data.Validated.{ Invalid, Valid }
+import com.aracon.scalachain.SpecNetworkPackageHelper
 import com.aracon.scalachain.crypto.FastCryptographicHash
 import com.aracon.scalachain.error._
 import com.aracon.scalachain.block.{ Block, EmptyBlockData }
+import com.aracon.scalachain.contracts.{ ScalaCoinContract, ScalaCoinTransfer }
+import com.aracon.scalachain.messages.{ CreateContract, ScalaCoinMessage, TransferMoney }
 import org.scalacheck.Gen
 
 class NodeSpec extends SpecNetworkPackageHelper {
@@ -385,7 +388,8 @@ class NodeSpec extends SpecNetworkPackageHelper {
           forAll(Gen.alphaNumStr) { wrongHash =>
             val lastBlock = Block(1L, "", 0L, wrongHash + "1", EmptyBlockData)
 
-            val hash                    = FastCryptographicHash.calculateBlockHash(2L, wrongHash, 0L, EmptyBlockData)
+            val hash =
+              FastCryptographicHash.calculateBlockHash(2L, wrongHash, 0L, EmptyBlockData)
             val faultyPreviousHashBlock = Block(2L, wrongHash, 0L, hash, EmptyBlockData)
             node.validateReceivedBlock(lastBlock, faultyPreviousHashBlock) should be(
               Invalid(NonEmptyList.of(WrongPreviousHash))
@@ -455,10 +459,156 @@ class NodeSpec extends SpecNetworkPackageHelper {
     }
   }
 
+  "findContractById" - {
+    "returns None if there is no contract in the chain with the given id" in fixture { (node, _) =>
+      forAll(Gen.uuid, Gen.uuid, Gen.uuid, Gen.posNum[Long]) {
+        (contractId, anotherId, from, amount) =>
+          whenever(contractId !== anotherId) {
+            val scalaCoinContract = new ScalaCoinContract(contractId, from, amount)
+            val block             = Block(0, "", 0, "", scalaCoinContract)
+            node.blockchain += block
+
+            node.findContractById(anotherId) should be(None)
+          }
+      }
+    }
+    "returns the contract with the given id if it is stored in the blockchain" in fixture {
+      (node, _) =>
+        forAll(Gen.uuid, Gen.uuid, Gen.posNum[Long]) { (contractId, from, amount) =>
+          val scalaCoinContract = new ScalaCoinContract(contractId, from, amount)
+          val block             = Block(0, "", 0, "", scalaCoinContract)
+          node.blockchain += block
+
+          node.findContractById(contractId) should be(Some(scalaCoinContract))
+        }
+    }
+    "A found contract includes the latest state stored in the blockchain for that contract" in fixture {
+      (node, _) =>
+        forAll(Gen.uuid, Gen.uuid, Gen.uuid, Gen.posNum[Long]) { (contractId, from, to, amount) =>
+          val scalaCoinContract = new ScalaCoinContract(contractId, from, amount)
+          val blocks =
+          Block(0, "", 0, "", scalaCoinContract) ::
+          Block(0, "", 0, "", ScalaCoinTransfer(contractId, from, to, 1)) ::
+          Block(0, "", 0, "", ScalaCoinTransfer(contractId, to, from, 1)) ::
+          Nil
+          node.blockchain ++= blocks
+
+          val expected = Map(
+            from -> amount,
+            to   -> 0L
+          )
+
+          val contract = node.findContractById(contractId).get.asInstanceOf[ScalaCoinContract]
+          contract.allBalances should be(expected)
+        }
+    }
+  }
+
+  "processMessage" - {
+    "returns error if we don't recognise the message" in {
+      val node = new Node(UUID.randomUUID())
+      node.processMessage(new ScalaCoinMessage {}) should be(Left(UnknownMessage))
+    }
+    "CreateContract message" - {
+      "returns error" - {
+        "if a contract already exists with the same unique id in the chain" in withNode { (node) =>
+          forAll(Gen.uuid, Gen.uuid, Gen.posNum[Long]) { (contractId, from, amount) =>
+            val scalaCoinContract = new ScalaCoinContract(contractId, from, amount)
+            val contractCreation  = CreateContract(scalaCoinContract)
+
+            node.processMessage(contractCreation)
+
+            node.processMessage(contractCreation) should be(Left(ContractReferenceAlreadyExists))
+          }
+        }
+      }
+      "if message is valid" - {
+        "adds to the chain a new block that contains the received contract" in withNode { (node) =>
+          forAll(Gen.uuid, Gen.uuid, Gen.posNum[Long]) { (contractId, from, amount) =>
+            val scalaCoinContract = new ScalaCoinContract(contractId, from, amount)
+            val contractCreation  = CreateContract(scalaCoinContract)
+
+            node.processMessage(contractCreation)
+
+            node.getLocalBlockchainCopy.last.blockData should be(scalaCoinContract)
+          }
+        }
+        "returns ok" in withNode { (node) =>
+          forAll(Gen.uuid, Gen.uuid, Gen.posNum[Long]) { (contractId, from, amount) =>
+            val contractCreation = CreateContract(new ScalaCoinContract(contractId, from, amount))
+
+            node.processMessage(contractCreation) should be(Right(()))
+          }
+        }
+      }
+    }
+    "TransferMoney message" - {
+      "returns error" - {
+        "if we can't find an existing ScalaCoin contract with the given id" in withNode { (node) =>
+          forAll(Gen.uuid, Gen.uuid, Gen.uuid, Gen.posNum[Long]) {
+            (contractId, from, to, amount) =>
+              val transferMoney = TransferMoney(contractId, from, to, amount)
+              node.processMessage(transferMoney) should be(Left(InvalidContractReference))
+          }
+        }
+        "if contract fails processing message" in withNode { (node) =>
+          forAll(Gen.uuid, Gen.uuid, Gen.uuid, Gen.posNum[Long]) {
+            (contractId, from, to, amount) =>
+              val contract      = CreateContract(new ScalaCoinContract(contractId, from, amount))
+              val transferMoney = TransferMoney(contractId, from, to, amount + 1)
+
+              node.processMessage(contract)
+              node.processMessage(transferMoney) should be(
+                Left(ContractRejectedMessage(InsuficientFundsSenderError))
+              )
+          }
+        }
+      }
+      "if message is valid" - {
+        "adds to the chain a new ScalaCoinTransfer with the same data as the received message" in withNode {
+          (node) =>
+            forAll(Gen.uuid, Gen.uuid, Gen.uuid, Gen.posNum[Long]) {
+              (contractId, from, to, amount) =>
+                val contract      = CreateContract(new ScalaCoinContract(contractId, from, amount))
+                val transferMoney = TransferMoney(contractId, from, to, amount)
+
+                node.processMessage(contract)
+                node.processMessage(transferMoney)
+
+                node.getLocalBlockchainCopy.last.blockData should be(
+                  ScalaCoinTransfer(contractId, from, to, amount)
+                )
+            }
+        }
+        "returns ok" in withNode { (node) =>
+          forAll(Gen.uuid, Gen.uuid, Gen.uuid, Gen.posNum[Long]) {
+            (contractId, from, to, amount) =>
+              val contract      = CreateContract(new ScalaCoinContract(contractId, from, amount))
+              val transferMoney = TransferMoney(contractId, from, to, amount)
+
+              node.processMessage(contract)
+              node.processMessage(transferMoney) should be(Right(()))
+          }
+        }
+      }
+    }
+  }
+
   private def fixture(f: (Node, Network) => Unit): Unit = {
     val network = new Network()
     val node    = new Node(UUID.randomUUID())
+
     f(node, network)
+  }
+
+  private def withNode(f: (Node) => Unit): Unit = {
+    val network = new Network()
+    val node    = new Node(UUID.randomUUID())
+
+    node.appendPeer(network.originNode)
+    network.addNode(node)
+
+    f(node)
   }
 
   private def fixtureGen(f: (List[Block], List[Block], Node, Network) => Unit): Unit =

@@ -29,3 +29,19 @@ sealed trait BlockError extends BlockchainError
 case object WrongIndex        extends BlockError
 case object WrongPreviousHash extends BlockError
 case object WrongBlockHash    extends BlockError
+
+sealed trait MessageError extends BlockchainError
+
+case object NoNodesAvailable                                extends MessageError
+case object UnknownMessage                                  extends MessageError
+case object InvalidContractReference                        extends MessageError
+case object ContractReferenceAlreadyExists                  extends MessageError
+case class ContractRejectedMessage(err: SmartContractError) extends MessageError
+
+sealed trait SmartContractError extends BlockchainError
+
+sealed trait ScalaCoinError extends SmartContractError
+
+case object InvalidAmountError          extends ScalaCoinError
+case object InsuficientFundsSenderError extends ScalaCoinError
+case object OverflowError               extends ScalaCoinError

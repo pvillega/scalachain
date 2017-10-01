@@ -17,11 +17,12 @@
 package com.aracon.scalachain.block
 
 import java.io.{ ByteArrayOutputStream, ObjectOutputStream }
+import java.util.UUID
 
 import com.aracon.scalachain.crypto.FastCryptographicHash.Message
 
 // trait that all data stored in blocks within ScalaChain must extend
-trait BlockData {
+trait BlockData extends Serializable {
   def serialise: Message = {
     val stream: ByteArrayOutputStream = new ByteArrayOutputStream()
     val oos                           = new ObjectOutputStream(stream)
@@ -31,3 +32,8 @@ trait BlockData {
   }
 }
 case object EmptyBlockData extends BlockData
+
+trait SmartContract extends BlockData {
+  def contractUniqueId: UUID
+  def restoreContractLatestState(blockchain: List[Block]): Unit
+}
