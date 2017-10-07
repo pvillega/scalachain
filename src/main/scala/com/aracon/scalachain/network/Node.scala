@@ -132,7 +132,9 @@ class Node(val nodeId: UUID) {
       }
 
   def addBlockToNetwork(blockData: BlockData): Unit = {
-    info(s"Add new block to network - with data $blockData")
+    info(
+      s"Add new block to network - with data $blockData. If there was 'proof of work' only the winner would be able to do this operation. Not used here for simplicity."
+    )
     val newBlock = createNextBlock(blockData)
     appendBlock(newBlock)
     info(s"Add new block to network - block added to local chain, broadcasting to network")

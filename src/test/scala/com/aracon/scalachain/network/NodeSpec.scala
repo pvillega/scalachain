@@ -358,11 +358,6 @@ class NodeSpec extends SpecNetworkPackageHelper {
 
         peer1.getLocalBlockchainCopy should be(node.getLocalBlockchainCopy)
     }
-    "if two nodes generate the same block index, ????" in {
-      //TODO: proof of work/stake here??
-      fail()
-    }
-
   }
 
   "validateReceivedBlock" - {
