@@ -148,7 +148,7 @@ class ScalaCoinContractSpec extends SpecNetworkPackageHelper {
           .map(_.blockData.asInstanceOf[ScalaCoinContract])
           .head
 
-        // we get new contract with different contract id but same creator so transfers are not ignored due to mismtached 'from' id
+        // we get new contract with different contract id but same creator so transfers are not ignored due to mismatched 'from' id
         val scalaCoin    = new ScalaCoinContract(contractId, contract.creatorId, 1000)
         val prevBalances = scalaCoin.allBalances
 
