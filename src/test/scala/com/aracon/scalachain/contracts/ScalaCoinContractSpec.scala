@@ -142,7 +142,7 @@ class ScalaCoinContractSpec extends SpecNetworkPackageHelper {
       }
     }
     "given a non-empty block chain with ScalaCoin transfer messages for another contract, it doesn't modify any balances" in {
-      forAll(Gen.uuid, contractAndTransactions) { (contractId, blockchain) =>
+      forAll(Gen.uuid, scalaCoinContractAndTransactionsGen) { (contractId, blockchain) =>
         val contract = blockchain
           .filter(_.blockData.isInstanceOf[ScalaCoinContract])
           .map(_.blockData.asInstanceOf[ScalaCoinContract])
@@ -158,7 +158,7 @@ class ScalaCoinContractSpec extends SpecNetworkPackageHelper {
       }
     }
     "given a non-empty block chain with ScalaCoin transfer messages, the new state will match the processing of all those messages in order to the initial state" in {
-      forAll(contractAndTransactions) { (blockchainWithTransfers) =>
+      forAll(scalaCoinContractAndTransactionsGen) { (blockchainWithTransfers) =>
         val contract = blockchainWithTransfers
           .filter(_.blockData.isInstanceOf[ScalaCoinContract])
           .map(_.blockData.asInstanceOf[ScalaCoinContract])
@@ -182,7 +182,7 @@ class ScalaCoinContractSpec extends SpecNetworkPackageHelper {
       }
     }
     "given a non-empty block chain with ScalaCoin transfer messages, restoring state twice in a row returns a correct value (status doesn't carry over)" in {
-      forAll(contractAndTransactions) { (blockchainWithTransfers) =>
+      forAll(scalaCoinContractAndTransactionsGen) { (blockchainWithTransfers) =>
         val contract = blockchainWithTransfers
           .filter(_.blockData.isInstanceOf[ScalaCoinContract])
           .map(_.blockData.asInstanceOf[ScalaCoinContract])

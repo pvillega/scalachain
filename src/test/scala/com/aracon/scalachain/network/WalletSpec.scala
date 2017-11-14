@@ -71,7 +71,7 @@ class WalletSpec extends SpecNetworkPackageHelper {
         }
 
       def verifyContractsLoaded(f: (Network, Wallet) => Assertion) =
-        forAll(contractAndTransactions, contractAndTransactions) { (chain1, chain2) =>
+        forAll(scalaCoinContractAndTransactionsGen, scalaCoinContractAndTransactionsGen) { (chain1, chain2) =>
           val network = new Network()
           network.originNode.blockchain ++= (chain1 ::: chain2)
           val wallet = new Wallet(UUID.randomUUID(), network)
@@ -170,7 +170,7 @@ class WalletSpec extends SpecNetworkPackageHelper {
     }
     "for a non-empty chain" - {
       "all existing contracts are stored in the contract store" in {
-        forAll(contractAndTransactions) { chain =>
+        forAll(scalaCoinContractAndTransactionsGen) { chain =>
           val network = new Network()
           val wallet  = new Wallet(UUID.randomUUID(), network)
 
@@ -189,7 +189,7 @@ class WalletSpec extends SpecNetworkPackageHelper {
         }
       }
       "multiple contracts of same type with different contract id are stored in the contract store as different contracts" in {
-        forAll(contractAndTransactions, contractAndTransactions) { (chain1, chain2) =>
+        forAll(scalaCoinContractAndTransactionsGen, scalaCoinContractAndTransactionsGen) { (chain1, chain2) =>
           val network = new Network()
           val wallet  = new Wallet(UUID.randomUUID(), network)
 
@@ -214,7 +214,7 @@ class WalletSpec extends SpecNetworkPackageHelper {
         }
       }
       "contracts loaded in contract store have had their status updated according to contract data in the blockchain" in {
-        forAll(contractAndTransactions) { chain =>
+        forAll(scalaCoinContractAndTransactionsGen) { chain =>
           val network = new Network()
           val wallet  = new Wallet(UUID.randomUUID(), network)
 

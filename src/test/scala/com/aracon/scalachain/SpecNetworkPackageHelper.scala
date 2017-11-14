@@ -72,7 +72,7 @@ trait SpecNetworkPackageHelper extends FreeSpec with Matchers with GeneratorDriv
       pair     <- allPairs
     } yield Block(0, "", 0L, "", ScalaCoinTransfer(contractId, pair._1, pair._2, 1))
 
-  val contractAndTransactions: Gen[List[Block]] = for {
+  val scalaCoinContractAndTransactionsGen: Gen[List[Block]] = for {
     contract       <- scalaCoinGen
     transfersChain <- transfersForContract(contract.contractUniqueId, contract.creatorId)
   } yield Block(0, "", 0, "", contract) :: transfersChain
